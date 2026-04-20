@@ -1,0 +1,18 @@
+node_modules/
+dist/
+
+# Local Python environments and caches
+tools/venvs/
+__pycache__/
+*.pyc
+
+# Local generated assets
+public/assets/characters/models/profile-character.glb
+public/assets/characters/source/profile-character.png
+
+# Local cloned tools
+tools/Hunyuan3D-2/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

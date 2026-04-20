@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Man Hunt</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <main class="auth-shell boot-shell">
+      <section class="auth-hero panel">
+        <div>
+          <p class="eyebrow">Competitive Collection</p>
+          <h1>Man Hunt</h1>
+          <h2>Turn real people into fighters, build a roster, and climb through cinematic battles.</h2>
+          <p class="auth-copy">Loading the local prototype now. If this screen stays here, keep the local server running and refresh the page.</p>
+        </div>
+        <div class="auth-preview-grid">
+          <article class="auth-preview-card">
+            <span class="tag">Demo Account</span>
+            <h3>demo@manhunt.app</h3>
+            <p>Password: ArenaDemo2026!</p>
+          </article>
+          <article class="auth-preview-card">
+            <span class="tag">Run Local</span>
+            <h3>node server/server.js</h3>
+            <p>Open http://localhost:3100 after the server starts.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="auth-panel panel">
+        <div class="auth-tabs">
+          <button class="auth-tab active" type="button">Log In</button>
+          <button class="auth-tab" type="button">Create Account</button>
+        </div>
+
+        <div class="auth-form-copy">
+          <p class="eyebrow">Starting Up</p>
+          <h3>Preparing your local app</h3>
+          <p>The interactive login form should appear here as soon as the browser finishes loading the app script.</p>
+        </div>
+
+        <form class="auth-form">
+          <label class="auth-field">
+            <span>Email</span>
+            <input type="email" placeholder="demo@manhunt.app" disabled>
+          </label>
+          <label class="auth-field">
+            <span>Password</span>
+            <input type="password" placeholder="ArenaDemo2026!" disabled>
+          </label>
+          <button class="primary-button auth-submit" type="button" disabled>Loading App...</button>
+        </form>
+
+        <p class="auth-message boot-note">If this page never becomes interactive, refresh the browser once and make sure the terminal still shows the local server running.</p>
+      </section>
+    </main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
