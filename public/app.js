@@ -1,12 +1,34 @@
 const demoAccount = {
   username: "ArenaDemo",
   email: "demo@manhunt.app",
-  password: "ArenaDemo2026!"
+  password: "ArenaDemo2026!",
+  rankedScore: 711
 };
 
 const storageKey = "man-hunt.accounts";
 const characterModelPath = "/assets/characters/models/profile-character.glb";
 const characterSourcePath = "/assets/characters/source/profile-character.png";
+const tierSize = 100;
+const tierOrder = ["III", "II", "I"];
+const rankDivisions = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Grandmaster"];
+const championThreshold = rankDivisions.length * tierOrder.length * tierSize;
+const powerTypes = ["Fire", "Water", "Air", "Earth", "Lightning", "Shadow", "Light", "Ice", "Metal", "Nature"];
+const powerRarities = ["Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical"];
+const fighterClasses = ["Duelist", "Tank", "Bruiser", "Support", "Assassin", "Guardian", "Mage", "Ranger"];
+const fighterNamePrefixes = ["Nova", "Iron", "Ash", "Storm", "Echo", "Frost", "Viper", "Blaze", "Rune", "Sky"];
+const fighterNameSuffixes = ["Rush", "Vale", "Mercer", "Strike", "Bloom", "Pulse", "Shade", "Breaker", "Torrent", "Flare"];
+const powerThemes = {
+  Fire: { primary: "#ff8247", secondary: "#ffb54d", accent: "#ff5d3d" },
+  Water: { primary: "#46b8ff", secondary: "#7ae0ff", accent: "#2086ff" },
+  Air: { primary: "#c9f4ff", secondary: "#91d9ff", accent: "#6fb4ff" },
+  Earth: { primary: "#9b7a4f", secondary: "#d8b27e", accent: "#6a5134" },
+  Lightning: { primary: "#ffd84e", secondary: "#fff27d", accent: "#f7a600" },
+  Shadow: { primary: "#54446f", secondary: "#8c73b6", accent: "#261a3f" },
+  Light: { primary: "#fff4b0", secondary: "#ffffff", accent: "#ffd36a" },
+  Ice: { primary: "#9de7ff", secondary: "#ddf9ff", accent: "#67bfff" },
+  Metal: { primary: "#adb6c8", secondary: "#e1e7f0", accent: "#707b92" },
+  Nature: { primary: "#59ca78", secondary: "#96ef9f", accent: "#2c8e4d" }
+};
 
 const fighters = [
   {
@@ -15,10 +37,10 @@ const fighters = [
     className: "Duelist",
     level: 7,
     summary: "Built as a fast duelist with high agility and burst openings. Designed for early 1v1 dominance and later 3v3 cleanup.",
-    stats: { Power: 72, Defense: 58, Speed: 91, Agility: 89, Vitality: 66, Focus: 70 },
+    stats: { Attack: 72, Defense: 58, Agility: 89, Vitality: 66, Power: 70 },
     notes: [
       "12 wins, 4 losses",
-      "3-match streak in Gold III",
+      "3-match ranked streak",
       "Signature move: Flash Divide",
       "Trait: Evade chance rises after each non-critical hit"
     ]
@@ -29,7 +51,7 @@ const fighters = [
     className: "Tank",
     level: 6,
     summary: "A heavy frontliner built for survival and attrition, with elite defense and reliable control pressure.",
-    stats: { Power: 64, Defense: 92, Speed: 44, Agility: 39, Vitality: 88, Focus: 58 }
+    stats: { Attack: 64, Defense: 92, Agility: 39, Vitality: 88, Power: 58 }
   },
   {
     name: "Echo Wire",
@@ -37,7 +59,7 @@ const fighters = [
     className: "Support",
     level: 5,
     summary: "Enables team play with recovery windows, tempo boosts, and layered defensive utility.",
-    stats: { Power: 49, Defense: 57, Speed: 73, Agility: 68, Vitality: 69, Focus: 81 }
+    stats: { Attack: 49, Defense: 57, Agility: 68, Vitality: 69, Power: 81 }
   },
   {
     name: "Hex Mercer",
@@ -45,7 +67,7 @@ const fighters = [
     className: "Bruiser",
     level: 4,
     summary: "A straightforward striker with high power and honest brawl pressure.",
-    stats: { Power: 81, Defense: 61, Speed: 55, Agility: 51, Vitality: 74, Focus: 47 }
+    stats: { Attack: 81, Defense: 61, Agility: 51, Vitality: 74, Power: 47 }
   }
 ];
 
@@ -61,6 +83,7 @@ const state = {
   generationInProgress: false,
   appNotice: "",
   characterImageVersion: Date.now(),
+  generatedFighter: null,
   authDraft: {
     username: "",
     email: "",
@@ -71,14 +94,174 @@ const state = {
 
 function getAccounts() {
   try {
-    return JSON.parse(window.localStorage.getItem(storageKey) || "[]");
+    return JSON.parse(window.localStorage.getItem(storageKey) || "[]").map(normalizeAccount);
   } catch {
     return [];
   }
 }
 
 function saveAccounts(accounts) {
-  window.localStorage.setItem(storageKey, JSON.stringify(accounts));
+  window.localStorage.setItem(storageKey, JSON.stringify(accounts.map(normalizeAccount)));
+}
+
+function normalizeRankedScore(value) {
+  const score = Number(value);
+  if (!Number.isFinite(score)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor(score));
+}
+
+function normalizeAccount(account) {
+  return {
+    ...account,
+    rankedScore: normalizeRankedScore(account?.rankedScore)
+  };
+}
+
+function rankInfoForScore(scoreValue) {
+  const score = normalizeRankedScore(scoreValue);
+
+  if (score >= championThreshold) {
+    return {
+      score,
+      isChampion: true,
+      division: "Champion",
+      tier: null,
+      label: "Champion",
+      displayRank: `${score} Score`,
+      fullLabel: `Champion ${score} Score`,
+      nextRankLabel: null,
+      pointsIntoTier: score - championThreshold,
+      pointsToNextTier: null,
+      tierProgress: null
+    };
+  }
+
+  const tierIndex = Math.floor(score / tierSize);
+  const divisionIndex = Math.floor(tierIndex / tierOrder.length);
+  const tierOffset = tierIndex % tierOrder.length;
+  const division = rankDivisions[divisionIndex];
+  const tier = tierOrder[tierOffset];
+  const pointsIntoTier = score % tierSize;
+  const nextTierScore = (tierIndex + 1) * tierSize;
+  const nextRankLabel = nextTierScore >= championThreshold ? "Champion" : rankInfoForScore(nextTierScore).label;
+
+  return {
+    score,
+    isChampion: false,
+    division,
+    tier,
+    label: `${division} ${tier}`,
+    displayRank: `${division} ${tier}`,
+    fullLabel: `${division} ${tier} • ${score} Score`,
+    nextRankLabel,
+    pointsIntoTier,
+    pointsToNextTier: nextTierScore - score,
+    tierProgress: `${pointsIntoTier}/${tierSize}`
+  };
+}
+
+function currentRankInfo() {
+  return rankInfoForScore(state.currentUser?.rankedScore ?? 0);
+}
+
+function leaderboardRowsForUser(user) {
+  const userScore = normalizeRankedScore(user?.rankedScore);
+  const rows = [
+    { username: "SkyBreaker", score: 2860 },
+    { username: "OrbitKid", score: 2410 },
+    { username: "CrimsonArc", score: 2245 },
+    { username: user?.username || "You", score: userScore, isCurrentUser: true },
+    { username: "FrostByte", score: Math.max(0, userScore - 14) },
+    { username: "NovaPalm", score: Math.max(0, userScore - 57) },
+    { username: "IronPulse", score: Math.max(0, userScore - 103) }
+  ];
+
+  return rows
+    .sort((left, right) => right.score - left.score)
+    .map((row, index) => ({
+      placement: `#${String(index + 1).padStart(2, "0")}`,
+      username: row.isCurrentUser ? "You" : row.username,
+      rank: rankInfoForScore(row.score).displayRank,
+      score: row.score,
+      isCurrentUser: Boolean(row.isCurrentUser)
+    }));
+}
+
+function randomFrom(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function randomStat(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function generateRandomFighter() {
+  const power = randomFrom(powerTypes);
+  const powerRarity = randomFrom(powerRarities);
+  const className = randomFrom(fighterClasses);
+  const name = `${randomFrom(fighterNamePrefixes)} ${randomFrom(fighterNameSuffixes)}`;
+
+  return {
+    name,
+    className,
+    power,
+    powerRarity,
+    summary: `${name} is a ${className.toLowerCase()} built around ${power.toLowerCase()} control and aggressive arena pressure.`,
+    stats: {
+      Attack: randomStat(45, 96),
+      Defense: randomStat(40, 94),
+      Agility: randomStat(42, 97),
+      Vitality: randomStat(44, 95)
+    }
+  };
+}
+
+function themeForPower(power) {
+  return powerThemes[power] || { primary: "#8a5bff", secondary: "#5bcbff", accent: "#6b3df2" };
+}
+
+function randomFighterViewerMarkup(fighter) {
+  if (!fighter) {
+    return "";
+  }
+
+  const theme = themeForPower(fighter.power);
+  const style = `--fighter-primary:${theme.primary};--fighter-secondary:${theme.secondary};--fighter-accent:${theme.accent};`;
+  const rarityClass = `rarity-${String(fighter.powerRarity || "").toLowerCase()}`;
+
+  return `
+    <div class="procedural-model-shell" style="${style}">
+      <div class="procedural-model-aura"></div>
+      <div class="procedural-model-turntable">
+        <div class="procedural-model-character">
+          <div class="procedural-model-cape"></div>
+          <div class="procedural-model-shoulder left"></div>
+          <div class="procedural-model-shoulder right"></div>
+          <div class="procedural-model-head"></div>
+          <div class="procedural-model-visor"></div>
+          <div class="procedural-model-torso"></div>
+          <div class="procedural-model-waist"></div>
+          <div class="procedural-model-arm left"></div>
+          <div class="procedural-model-arm right"></div>
+          <div class="procedural-model-forearm left"></div>
+          <div class="procedural-model-forearm right"></div>
+          <div class="procedural-model-thigh left"></div>
+          <div class="procedural-model-thigh right"></div>
+          <div class="procedural-model-leg left"></div>
+          <div class="procedural-model-leg right"></div>
+          <div class="procedural-model-core"></div>
+        </div>
+      </div>
+      <div class="procedural-model-caption">
+        <span class="tag generated-power-tag">${escapeHtml(fighter.power)}</span>
+        <strong class="procedural-model-name">${escapeHtml(fighter.name)}</strong>
+        <span class="procedural-model-rarity ${rarityClass}">${escapeHtml(fighter.powerRarity)} Power</span>
+      </div>
+    </div>
+  `;
 }
 
 function render() {
@@ -187,6 +370,9 @@ function authTemplate() {
 
 function appTemplate() {
   const currentFighter = fighters[0];
+  const rankInfo = currentRankInfo();
+  const leaderboardRows = leaderboardRowsForUser(state.currentUser);
+  const generatedFighter = state.generatedFighter;
   return `
     <div class="app-shell">
       <aside class="sidebar">
@@ -237,7 +423,7 @@ function appTemplate() {
                     <p>${state.currentUser.email}</p>
                     <div class="fighter-stats">
                       <span>Season Zero</span>
-                      <span>Gold III</span>
+                      <span>${rankInfo.displayRank}</span>
                       <span>Roster 8/20</span>
                     </div>
                   </div>
@@ -247,10 +433,12 @@ function appTemplate() {
                 <div class="viewer-copy">
                   <p class="eyebrow">Featured Character</p>
                   <h3>3D Turntable Viewer</h3>
-                  <p>Once we generate a <code>.glb</code>, the character will appear here on a podium and can be rotated to see the full model.</p>
+                  <p>${generatedFighter ? "Random fighters now generate an instant 3D preview in-browser, while uploaded PNG fighters can still use the GLB pipeline." : "Once we generate a <code>.glb</code>, the character will appear here on a podium and can be rotated to see the full model."}</p>
                 </div>
                 <div class="viewer-stage">
-                  ${state.hasCharacterModel ? `
+                  ${generatedFighter ? `
+                    ${randomFighterViewerMarkup(generatedFighter)}
+                  ` : state.hasCharacterModel ? `
                     <model-viewer
                       class="character-viewer"
                       src="${characterModelPath}"
@@ -269,7 +457,6 @@ function appTemplate() {
                   `}
                   <div class="podium"></div>
                 </div>
-                <p class="viewer-meta">Planned asset path: <code>${characterModelPath}</code></p>
               </aside>
             </div>
             <div class="content-grid profile-tools-grid">
@@ -300,10 +487,44 @@ function appTemplate() {
                 `}
                 <button class="primary-button" id="generate-model" type="button" ${state.sourceImageExists && !state.generationInProgress ? "" : "disabled"}>${state.generationInProgress ? "Generating..." : "Generate 3D Model"}</button>
               </article>
+              <article class="panel">
+                <p class="eyebrow">No Photo Needed</p>
+                <h3>Generate Random Character</h3>
+                <p>Create a fully original fighter with randomized stats, class, elemental power, and rarity without starting from a real person.</p>
+                <button class="primary-button" id="generate-random-fighter" type="button">Generate Random Fighter</button>
+                ${generatedFighter ? `
+                  <div class="generated-fighter-card">
+                    <div class="generated-fighter-header">
+                      <div>
+                        <p class="eyebrow">Latest Roll</p>
+                        <h4>${generatedFighter.name}</h4>
+                      </div>
+                      <span class="pill">${generatedFighter.className}</span>
+                    </div>
+                    <p class="generated-fighter-copy">${generatedFighter.summary}</p>
+                    <div class="fighter-stats generated-fighter-stats">
+                      <span>Attack ${generatedFighter.stats.Attack}</span>
+                      <span>Defense ${generatedFighter.stats.Defense}</span>
+                      <span>Agility ${generatedFighter.stats.Agility}</span>
+                      <span>Vitality ${generatedFighter.stats.Vitality}</span>
+                    </div>
+                    <div class="generated-fighter-power">
+                      <span class="tag generated-power-tag">${generatedFighter.power}</span>
+                      <span class="generated-power-rarity">${generatedFighter.powerRarity}</span>
+                    </div>
+                    <p class="generated-model-note">A matching 3D model preview was generated automatically and placed in the viewer above.</p>
+                  </div>
+                ` : `
+                  <div class="generated-fighter-empty">
+                    <p>Press the button to roll a brand-new fighter concept with a random power like Fire, Water, Air, Earth, and more.</p>
+                  </div>
+                `}
+              </article>
             </div>
             <div class="dashboard-grid">
               <article class="panel"><p class="eyebrow">Joined</p><h3>${formatDate(state.currentUser.joinedAt)}</h3><p>Stored locally in browser storage for now.</p></article>
-              <article class="panel"><p class="eyebrow">Current Division</p><h3>Gold III</h3><p>Your profile page can become the home for rank and battle record.</p></article>
+              <article class="panel"><p class="eyebrow">Current Division</p><h3>${rankInfo.displayRank}</h3><p>${rankInfo.isChampion ? `Champion score: ${rankInfo.score}` : `${rankInfo.pointsToNextTier} points to ${rankInfo.nextRankLabel}.`}</p></article>
+              <article class="panel"><p class="eyebrow">Ranked Score</p><h3>${rankInfo.score}</h3><p>${rankInfo.isChampion ? "Champion players keep climbing with raw score only." : `Tier progress: ${rankInfo.tierProgress}`}</p></article>
               <article class="panel"><p class="eyebrow">Favorite Fighter</p><h3>Nova Rush</h3><p>Fast duelist, high-agility closer, and current headliner for your roster.</p></article>
             </div>
           </section>
@@ -321,8 +542,8 @@ function appTemplate() {
                 <div class="preview-card glow-blue">
                   <span class="tag">Featured Fighter</span>
                   <h4>Nova Rush</h4>
-                  <p>Speed Duelist</p>
-                  <div class="stat-row"><span>Power 72</span><span>Agility 91</span></div>
+                  <p>Agility Duelist</p>
+                  <div class="stat-row"><span>Attack 72</span><span>Agility 89</span></div>
                 </div>
                 <div class="preview-card glow-purple">
                   <span class="tag">Rare Trait</span>
@@ -346,9 +567,10 @@ function appTemplate() {
                   <h4>${fighter.name}</h4>
                   <p>${fighter.className}</p>
                   <div class="fighter-stats">
-                    <span>Power ${fighter.stats.Power}</span>
+                    <span>Attack ${fighter.stats.Attack}</span>
                     <span>Defense ${fighter.stats.Defense}</span>
-                    <span>Speed ${fighter.stats.Speed}</span>
+                    <span>Agility ${fighter.stats.Agility}</span>
+                    <span>Power ${fighter.stats.Power}</span>
                     <span>Vitality ${fighter.stats.Vitality}</span>
                   </div>
                 </article>
@@ -379,8 +601,15 @@ function appTemplate() {
               <article class="panel upload-zone"><div><p class="eyebrow">Step 1</p><h3>Photo Intake Placeholder</h3><p>The final app will support camera capture or upload.</p></div></article>
               <article class="panel">
                 <p class="eyebrow">Step 2</p><h3>Fighter Reveal</h3>
-                <div class="reveal-card"><div class="portrait-orb"></div><div><h4>Generated Fighter Card</h4><p>Class, rarity, stats, trait, and visual identity will appear here after generation.</p></div></div>
-                <div class="attribute-grid">${["Power","Defense","Speed","Agility","Vitality","Focus"].map((label) => `<span>${label}</span>`).join("")}</div>
+                <div class="reveal-card">
+                  <div class="portrait-orb"></div>
+                  <div>
+                    <h4>Generated Fighter Card</h4>
+                    <p>Each character will roll combat stats and also unlock a random elemental power like Fire, Water, Air, or Earth.</p>
+                    <p class="reveal-meta">Power rarity will appear beside the power name: Common, Uncommon, Rare, Epic, Legendary, or Mythical.</p>
+                  </div>
+                </div>
+                <div class="attribute-grid">${["Attack","Defense","Agility","Vitality","Power","Rarity"].map((label) => `<span>${label}</span>`).join("")}</div>
               </article>
             </div>
           </section>
@@ -400,12 +629,7 @@ function appTemplate() {
           <section>
             <div class="section-intro"><div><p class="eyebrow">Competitive Identity</p><h3>Rankings</h3></div></div>
             <div class="panel">
-              ${[
-                ["#01", "OrbitKid", "Diamond I", "920"],
-                ["#12", "You", "Gold III", "711"],
-                ["#13", "FrostByte", "Gold III", "706"],
-                ["#14", "NovaPalm", "Gold II", "699"]
-              ].map((row) => `<div class="leaderboard-row ${row[1] === "You" ? "active" : ""}"><span>${row[0]}</span><span>${row[1]}</span><span>${row[2]}</span><span>${row[3]}</span></div>`).join("")}
+              ${leaderboardRows.map((row) => `<div class="leaderboard-row ${row.isCurrentUser ? "active" : ""}"><span>${row.placement}</span><span>${row.username}</span><span>${row.rank}</span><span>${row.score}</span></div>`).join("")}
             </div>
           </section>
         ` : ""}
@@ -508,6 +732,15 @@ function bindEvents() {
   if (generateModel) {
     generateModel.addEventListener("click", async () => {
       await generateProfileModel();
+    });
+  }
+
+  const generateRandomFighterButton = document.getElementById("generate-random-fighter");
+  if (generateRandomFighterButton) {
+    generateRandomFighterButton.addEventListener("click", () => {
+      state.generatedFighter = generateRandomFighter();
+      state.appNotice = `Random fighter generated: ${state.generatedFighter.name} with ${state.generatedFighter.power} power (${state.generatedFighter.powerRarity}).`;
+      render();
     });
   }
 }
@@ -657,7 +890,8 @@ function handleAuthSubmit() {
     username,
     email,
     password,
-    joinedAt: new Date().toISOString()
+    joinedAt: new Date().toISOString(),
+    rankedScore: 0
   };
 
   accounts.push(account);
@@ -673,11 +907,12 @@ function handleAuthSubmit() {
 
 function loginAsDemo() {
   state.authenticated = true;
-  state.currentUser = {
+  state.currentUser = normalizeAccount({
     username: demoAccount.username,
     email: demoAccount.email,
-    joinedAt: "2026-04-19T12:00:00.000Z"
-  };
+    joinedAt: "2026-04-19T12:00:00.000Z",
+    rankedScore: demoAccount.rankedScore
+  });
   state.activeScreen = "profile";
   state.message = "";
   resetAuthDraft();
