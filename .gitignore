@@ -9,6 +9,7 @@ __pycache__/
 # Local generated assets
 public/assets/characters/models/profile-character.glb
 public/assets/characters/source/profile-character.png
+data/
 
 # Local cloned tools
 tools/Hunyuan3D-2/

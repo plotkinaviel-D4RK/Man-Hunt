@@ -5,7 +5,6 @@ const demoAccount = {
   rankedScore: 711
 };
 
-const storageKey = "man-hunt.accounts";
 const characterModelPath = "/assets/characters/models/profile-character.glb";
 const characterSourcePath = "/assets/characters/source/profile-character.png";
 const tierSize = 100;
@@ -78,6 +77,7 @@ const state = {
   mode: "login",
   authenticated: false,
   currentUser: null,
+  savedFighters: [],
   activeScreen: "profile",
   message: "",
   hasCharacterModel: false,
@@ -97,18 +97,6 @@ const state = {
   }
 };
 
-function getAccounts() {
-  try {
-    return JSON.parse(window.localStorage.getItem(storageKey) || "[]").map(normalizeAccount);
-  } catch {
-    return [];
-  }
-}
-
-function saveAccounts(accounts) {
-  window.localStorage.setItem(storageKey, JSON.stringify(accounts.map(normalizeAccount)));
-}
-
 function normalizeRankedScore(value) {
   const score = Number(value);
   if (!Number.isFinite(score)) {
@@ -123,6 +111,85 @@ function normalizeAccount(account) {
     ...account,
     rankedScore: normalizeRankedScore(account?.rankedScore)
   };
+}
+
+function normalizeFighter(fighter) {
+  return {
+    ...fighter,
+    id: fighter?.id || `fighter-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: String(fighter?.name || "Unknown Fighter"),
+    className: String(fighter?.className || "Fighter"),
+    power: String(fighter?.power || "Unknown"),
+    powerRarity: String(fighter?.powerRarity || fighter?.rarity || "Common"),
+    rarity: String(fighter?.powerRarity || fighter?.rarity || "Common"),
+    level: normalizeRankedScore(fighter?.level) || 1,
+    summary: String(fighter?.summary || ""),
+    notes: Array.isArray(fighter?.notes) ? fighter.notes : [],
+    stats: {
+      Attack: normalizeRankedScore(fighter?.stats?.Attack),
+      Defense: normalizeRankedScore(fighter?.stats?.Defense),
+      Agility: normalizeRankedScore(fighter?.stats?.Agility),
+      Vitality: normalizeRankedScore(fighter?.stats?.Vitality)
+    }
+  };
+}
+
+async function apiRequest(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.message || "Request failed.");
+  }
+
+  return payload;
+}
+
+async function loadSavedFighters() {
+  if (!state.currentUser?.id) {
+    state.savedFighters = [];
+    return;
+  }
+
+  const payload = await apiRequest(`/api/characters?userId=${encodeURIComponent(state.currentUser.id)}`);
+  state.savedFighters = (payload.characters || []).map(normalizeFighter);
+}
+
+async function saveFighterToAccount(fighter) {
+  if (!state.currentUser?.id) {
+    return fighter;
+  }
+
+  const payload = await apiRequest("/api/characters", {
+    method: "POST",
+    body: JSON.stringify({
+      userId: state.currentUser.id,
+      character: fighter
+    })
+  });
+
+  return normalizeFighter(payload.character);
+}
+
+async function updateFighterNameOnAccount(fighterId, name) {
+  if (!state.currentUser?.id) {
+    return null;
+  }
+
+  const payload = await apiRequest(`/api/characters/${encodeURIComponent(fighterId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      userId: state.currentUser.id,
+      name
+    })
+  });
+
+  return normalizeFighter(payload.character);
 }
 
 function rankInfoForScore(scoreValue) {
@@ -234,8 +301,8 @@ function generateRandomFighter() {
 }
 
 function addFighterToRoster(fighter) {
-  const nextRoster = [fighter, ...state.rosterFighters].slice(0, maxRosterSize);
-  state.rosterFighters = nextRoster;
+  const nextRoster = [normalizeFighter(fighter), ...state.savedFighters];
+  state.savedFighters = nextRoster;
   state.selectedRosterFighterId = fighter.id;
 }
 
@@ -243,14 +310,14 @@ function summaryForFighter(fighter, name = fighter.name) {
   return `${name} is a ${fighter.className.toLowerCase()} built around ${fighter.power.toLowerCase()} control and aggressive arena pressure.`;
 }
 
-function renameFighter(fighterId, nextName) {
+async function renameFighter(fighterId, nextName) {
   const name = nextName.trim();
   if (!name) {
     state.appNotice = "Choose a fighter name before saving.";
     return;
   }
 
-  const rosterFighter = state.rosterFighters.find((fighter) => fighter.id === fighterId);
+  const rosterFighter = state.savedFighters.find((fighter) => fighter.id === fighterId);
   if (rosterFighter) {
     rosterFighter.name = name;
     rosterFighter.summary = summaryForFighter(rosterFighter, name);
@@ -261,7 +328,21 @@ function renameFighter(fighterId, nextName) {
     state.generatedFighter.summary = summaryForFighter(state.generatedFighter, name);
   }
 
-  state.appNotice = `Renamed fighter to ${name}.`;
+  if (!state.currentUser?.id || !rosterFighter) {
+    state.appNotice = `Renamed fighter to ${name}.`;
+    return;
+  }
+
+  try {
+    const savedFighter = await updateFighterNameOnAccount(fighterId, name);
+    state.savedFighters = state.savedFighters.map((fighter) => fighter.id === fighterId ? savedFighter : fighter);
+    if (state.generatedFighter?.id === fighterId) {
+      state.generatedFighter = savedFighter;
+    }
+    state.appNotice = `Renamed fighter to ${name}.`;
+  } catch (error) {
+    state.appNotice = error.message || "Name changed on this screen, but saving it failed.";
+  }
 }
 
 function renameFighterForm(fighter, formId) {
@@ -426,7 +507,8 @@ function authTemplate() {
 }
 
 function appTemplate() {
-  const currentFighter = state.rosterFighters.find((fighter) => fighter.id === state.selectedRosterFighterId) || state.rosterFighters[0] || null;
+  const rosterFighters = state.savedFighters.slice(0, maxRosterSize);
+  const currentFighter = rosterFighters.find((fighter) => fighter.id === state.selectedRosterFighterId) || rosterFighters[0] || null;
   const rankInfo = currentRankInfo();
   const leaderboardRows = leaderboardRowsForUser(state.currentUser);
   const generatedFighter = state.generatedFighter;
@@ -483,7 +565,7 @@ function appTemplate() {
                     <div class="fighter-stats">
                       <span>Season Zero</span>
                       <span>${rankInfo.displayRank}</span>
-                      <span>Roster ${state.rosterFighters.length}/${maxRosterSize}</span>
+                      <span>Roster ${rosterFighters.length}/${maxRosterSize}</span>
                     </div>
                   </div>
                 </div>
@@ -573,7 +655,7 @@ function appTemplate() {
                       <span class="tag generated-power-tag">${generatedFighter.power}</span>
                       <span class="generated-power-rarity">${generatedFighter.powerRarity}</span>
                     </div>
-                    <p class="generated-model-note">A matching 3D model preview was generated automatically and placed in the viewer above.</p>
+                    <p class="generated-model-note">${state.currentUser?.id ? "Saved to this local account automatically and added to your roster." : "A matching 3D model preview was generated automatically and placed in the viewer above."}</p>
                   </div>
                 ` : `
                   <div class="generated-fighter-empty">
@@ -583,7 +665,7 @@ function appTemplate() {
               </article>
             </div>
             <div class="dashboard-grid">
-              <article class="panel"><p class="eyebrow">Joined</p><h3>${formatDate(state.currentUser.joinedAt)}</h3><p>Stored locally in browser storage for now.</p></article>
+              <article class="panel"><p class="eyebrow">Joined</p><h3>${formatDate(state.currentUser.joinedAt)}</h3><p>Stored locally on this machine so we can test persistence before moving to a hosted database.</p></article>
               <article class="panel"><p class="eyebrow">Current Division</p><h3>${rankInfo.displayRank}</h3><p>${rankInfo.isChampion ? `Champion score: ${rankInfo.score}` : `${rankInfo.pointsToNextTier} points to ${rankInfo.nextRankLabel}.`}</p></article>
               <article class="panel"><p class="eyebrow">Ranked Score</p><h3>${rankInfo.score}</h3><p>${rankInfo.isChampion ? "Champion players keep climbing with raw score only." : `Tier progress: ${rankInfo.tierProgress}`}</p></article>
               <article class="panel"><p class="eyebrow">Favorite Fighter</p><h3>${currentFighter ? currentFighter.name : "No fighters yet"}</h3><p>${currentFighter ? `${currentFighter.className} with ${currentFighter.power} power leads your active roster.` : "Generate a fighter in Profile and it will appear here and in your roster."}</p></article>
@@ -620,11 +702,11 @@ function appTemplate() {
           <section>
             <div class="section-intro">
               <div><p class="eyebrow">Collection</p><h3>Roster Builder</h3></div>
-              <span class="pill">Roster ${state.rosterFighters.length}/${maxRosterSize}</span>
+              <span class="pill">Roster ${rosterFighters.length}/${maxRosterSize}</span>
             </div>
-            ${state.rosterFighters.length ? `
+            ${rosterFighters.length ? `
               <div class="roster-grid">
-              ${state.rosterFighters.map((fighter) => `
+              ${rosterFighters.map((fighter) => `
                 <article class="fighter-card ${currentFighter?.id === fighter.id ? "selected" : ""}" data-roster-fighter-id="${fighter.id}">
                   <span class="tag">${fighter.powerRarity}</span>
                   <h4>${fighter.name}</h4>
@@ -659,7 +741,11 @@ function appTemplate() {
               </article>
               <article class="panel">
                 <div class="panel-header"><div><p class="eyebrow">Career Notes</p><h3>Battle history matters</h3></div></div>
-                <ul class="clean-list">${currentFighter.notes.map((note) => `<li>${note}</li>`).join("")}</ul>
+                <ul class="clean-list">${(currentFighter.notes || [
+                  `${currentFighter.powerRarity || currentFighter.rarity || "Prototype"} fighter stored on this machine`,
+                  `${currentFighter.className} archetype ready for future team-building`,
+                  currentFighter.power ? `${currentFighter.power} power attunement unlocked` : "Ready for future trait unlocks"
+                ]).map((note) => `<li>${note}</li>`).join("")}</ul>
               </article>
               </div>
             ` : `
@@ -744,18 +830,18 @@ function bindEvents() {
 
   const authForm = document.getElementById("auth-form");
   if (authForm) {
-    authForm.addEventListener("submit", (event) => {
+    authForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       syncAuthDraftFromInputs();
-      handleAuthSubmit();
+      await handleAuthSubmit();
     });
   }
 
   const authSubmitButton = document.getElementById("auth-submit-button");
   if (authSubmitButton) {
-    authSubmitButton.addEventListener("click", () => {
+    authSubmitButton.addEventListener("click", async () => {
       syncAuthDraftFromInputs();
-      handleAuthSubmit();
+      await handleAuthSubmit();
     });
   }
 
@@ -783,10 +869,10 @@ function bindEvents() {
   });
 
   document.querySelectorAll("[data-rename-fighter-id]").forEach((form) => {
-    form.addEventListener("submit", (event) => {
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const input = form.querySelector("input");
-      renameFighter(form.dataset.renameFighterId, input?.value || "");
+      await renameFighter(form.dataset.renameFighterId, input?.value || "");
       render();
     });
   });
@@ -796,6 +882,9 @@ function bindEvents() {
     logout.addEventListener("click", () => {
       state.authenticated = false;
       state.currentUser = null;
+      state.savedFighters = [];
+      state.selectedRosterFighterId = null;
+      state.generatedFighter = null;
       state.mode = "login";
       state.message = "";
       render();
@@ -831,7 +920,7 @@ function bindEvents() {
 
   const generateRandomFighterButton = document.getElementById("generate-random-fighter");
   if (generateRandomFighterButton) {
-    generateRandomFighterButton.addEventListener("click", () => {
+    generateRandomFighterButton.addEventListener("click", async () => {
       if (state.generatedFighter && state.remainingRandomFighterRerolls <= 0) {
         state.appNotice = "You have used all 3 rerolls for this random fighter.";
         render();
@@ -842,11 +931,31 @@ function bindEvents() {
         state.remainingRandomFighterRerolls -= 1;
       }
 
-      state.generatedFighter = generateRandomFighter();
-      addFighterToRoster(state.generatedFighter);
-      state.appNotice = state.remainingRandomFighterRerolls > 0 || !state.generatedFighter
-        ? `Random fighter generated: ${state.generatedFighter.name} with ${state.generatedFighter.power} power (${state.generatedFighter.powerRarity}). Added to roster. ${state.remainingRandomFighterRerolls} rerolls remaining.`
-        : `Random fighter generated: ${state.generatedFighter.name} with ${state.generatedFighter.power} power (${state.generatedFighter.powerRarity}). Added to roster. No rerolls remaining.`;
+      const rolledFighter = normalizeFighter(generateRandomFighter());
+      state.generatedFighter = rolledFighter;
+      state.appNotice = `Random fighter generated: ${rolledFighter.name} with ${rolledFighter.power} power (${rolledFighter.powerRarity}).`;
+      render();
+
+      if (!state.currentUser?.id) {
+        addFighterToRoster(rolledFighter);
+        state.appNotice = state.remainingRandomFighterRerolls > 0
+          ? `${rolledFighter.name} was added to the demo roster. ${state.remainingRandomFighterRerolls} rerolls remaining.`
+          : `${rolledFighter.name} was added to the demo roster. No rerolls remaining.`;
+        render();
+        return;
+      }
+
+      try {
+        const savedFighter = await saveFighterToAccount(rolledFighter);
+        state.generatedFighter = savedFighter;
+        addFighterToRoster(savedFighter);
+        state.appNotice = state.remainingRandomFighterRerolls > 0
+          ? `${savedFighter.name} was saved to ${state.currentUser.username}'s local roster. ${state.remainingRandomFighterRerolls} rerolls remaining.`
+          : `${savedFighter.name} was saved to ${state.currentUser.username}'s local roster. No rerolls remaining.`;
+      } catch (error) {
+        state.appNotice = error.message || "The fighter rolled, but saving it failed.";
+      }
+
       render();
     });
   }
@@ -897,6 +1006,7 @@ function readFileAsDataUrl(file) {
 
 async function uploadCharacterSource(dataUrl) {
   state.appNotice = "Uploading character source...";
+  state.generatedFighter = null;
   render();
 
   try {
@@ -922,6 +1032,7 @@ async function uploadCharacterSource(dataUrl) {
 
 async function generateProfileModel() {
   state.generationInProgress = true;
+  state.generatedFighter = null;
   state.appNotice = "Generating the 3D model locally. This can take a while on the first run.";
   render();
 
@@ -944,8 +1055,7 @@ async function generateProfileModel() {
   render();
 }
 
-function handleAuthSubmit() {
-  const accounts = getAccounts();
+async function handleAuthSubmit() {
   const email = state.authDraft.email.trim().toLowerCase();
   const password = state.authDraft.password;
 
@@ -956,20 +1066,29 @@ function handleAuthSubmit() {
       return;
     }
 
-    const matched = accounts.find((account) => account.email === email && account.password === password);
-    if (!matched) {
+    try {
+      const payload = await apiRequest("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+
+      state.authenticated = true;
+      state.currentUser = normalizeAccount(payload.user);
+      state.savedFighters = (payload.characters || []).map(normalizeFighter);
+      state.selectedRosterFighterId = state.savedFighters[0]?.id || null;
+      state.activeScreen = "profile";
+      state.message = "";
+      state.appNotice = state.savedFighters.length
+        ? `${state.savedFighters.length} saved fighters loaded from this machine.`
+        : "Your local account loaded. Generate a fighter to start building your roster.";
+      resetAuthDraft();
+      render();
+      return;
+    } catch (error) {
       state.message = "No matching account found yet. Use the demo account or create a local profile.";
       render();
       return;
     }
-
-    state.authenticated = true;
-    state.currentUser = matched;
-    state.activeScreen = "profile";
-    state.message = "";
-    resetAuthDraft();
-    render();
-    return;
   }
 
   const username = state.authDraft.username.trim();
@@ -987,29 +1106,31 @@ function handleAuthSubmit() {
     return;
   }
 
-  if (email === demoAccount.email.toLowerCase() || accounts.some((account) => account.email === email)) {
-    state.message = "That email is already in use in this local prototype.";
+  if (email === demoAccount.email.toLowerCase()) {
+    state.message = "That email is already reserved for the demo account.";
     render();
     return;
   }
 
-  const account = {
-    username,
-    email,
-    password,
-    joinedAt: new Date().toISOString(),
-    rankedScore: 0
-  };
+  try {
+    const payload = await apiRequest("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ username, email, password })
+    });
 
-  accounts.push(account);
-  saveAccounts(accounts);
-
-  state.authenticated = true;
-  state.currentUser = account;
-  state.activeScreen = "profile";
-  state.message = "";
-  resetAuthDraft();
-  render();
+    state.authenticated = true;
+    state.currentUser = normalizeAccount(payload.user);
+    state.savedFighters = [];
+    state.selectedRosterFighterId = null;
+    state.activeScreen = "profile";
+    state.message = "";
+    state.appNotice = "Local account created. Any fighters you generate now will be saved on this machine.";
+    resetAuthDraft();
+    render();
+  } catch (error) {
+    state.message = error.message || "Account creation failed.";
+    render();
+  }
 }
 
 function loginAsDemo() {
@@ -1020,6 +1141,10 @@ function loginAsDemo() {
     joinedAt: "2026-04-19T12:00:00.000Z",
     rankedScore: demoAccount.rankedScore
   });
+  state.savedFighters = [];
+  state.selectedRosterFighterId = null;
+  state.generatedFighter = null;
+  state.appNotice = "Demo mode is active. Create a local account when you want fighter storage on this machine.";
   state.activeScreen = "profile";
   state.message = "";
   resetAuthDraft();
