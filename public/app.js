@@ -29,7 +29,7 @@ const powerThemes = {
   Nature: { primary: "#59ca78", secondary: "#96ef9f", accent: "#2c8e4d" }
 };
 const maxRandomFighterRerolls = 3;
-const maxRosterSize = 3;
+const maxRosterSize = 4;
 
 const fighters = [
   {
@@ -600,70 +600,6 @@ function appTemplate() {
                 </div>
               </aside>
             </div>
-            <div class="content-grid profile-tools-grid">
-              <article class="panel">
-                <p class="eyebrow">Character Source Upload</p>
-                <h3>Add the 2D character art</h3>
-                <p>Upload a PNG here and the app will save it to the correct project folder for the 3D pipeline.</p>
-                <label class="upload-button" for="character-upload">Choose PNG</label>
-                <input id="character-upload" class="hidden-file-input" type="file" accept="image/png">
-                <div class="status-stack">
-                  <span class="status-chip ${state.sourceImageExists ? "is-live" : ""}">${state.sourceImageExists ? "Source image ready" : "No source image yet"}</span>
-                  <span class="status-chip ${state.hasCharacterModel ? "is-live" : ""}">${state.hasCharacterModel ? "3D model ready" : "No 3D model yet"}</span>
-                  <span class="status-chip ${state.generationInProgress ? "is-live" : ""}">${state.generationInProgress ? "Generation running" : "Generator idle"}</span>
-                </div>
-                ${state.appNotice ? `<p class="auth-message app-notice">${state.appNotice}</p>` : ""}
-              </article>
-              <article class="panel">
-                <p class="eyebrow">Source Preview</p>
-                <h3>Current uploaded character</h3>
-                ${state.sourceImageExists ? `
-                  <div class="source-preview-card">
-                    <img class="source-preview-image" src="${characterSourceUrl()}" alt="Uploaded character source">
-                  </div>
-                ` : `
-                  <div class="source-preview-empty">
-                    <p>Upload a PNG to preview the exact image that will be used for local 3D generation.</p>
-                  </div>
-                `}
-                <button class="primary-button" id="generate-model" type="button" ${state.sourceImageExists && !state.generationInProgress ? "" : "disabled"}>${state.generationInProgress ? "Generating..." : "Generate 3D Model"}</button>
-              </article>
-              <article class="panel">
-                <p class="eyebrow">No Photo Needed</p>
-                <h3>Generate Random Character</h3>
-                <p>Create a fully original fighter with randomized stats, class, elemental power, and rarity without starting from a real person. After the first roll, you can reroll up to ${maxRandomFighterRerolls} times.</p>
-                <button class="primary-button" id="generate-random-fighter" type="button" ${canRerollRandomFighter ? "" : "disabled"}>${hasGeneratedFighter ? `Reroll Fighter (${state.remainingRandomFighterRerolls} left)` : "Generate Random Fighter"}</button>
-                ${generatedFighter ? `
-                  <div class="generated-fighter-card">
-                    <div class="generated-fighter-header">
-                      <div>
-                        <p class="eyebrow">Latest Roll</p>
-                        <h4>${generatedFighter.name}</h4>
-                      </div>
-                      <span class="pill">${generatedFighter.className}</span>
-                    </div>
-                    ${renameFighterForm(generatedFighter, "profile-rename-fighter")}
-                    <p class="generated-fighter-copy">${generatedFighter.summary}</p>
-                    <p class="generated-fighter-copy">Rerolls remaining: ${state.remainingRandomFighterRerolls}</p>
-                    <div class="fighter-stats generated-fighter-stats">
-                      <span>Attack ${generatedFighter.stats.Attack}</span>
-                      <span>Defense ${generatedFighter.stats.Defense}</span>
-                      <span>Agility ${generatedFighter.stats.Agility}</span>
-                      <span>Vitality ${generatedFighter.stats.Vitality}</span>
-                    </div>
-                    <div class="generated-fighter-power">
-                      <span class="tag generated-power-tag">${generatedFighter.power}</span>
-                      <span class="generated-power-rarity">${generatedFighter.powerRarity}</span>
-                    </div>
-                    <p class="generated-model-note">${state.currentUser?.id ? "Saved to this local account automatically and added to your roster." : "A matching 3D model preview was generated automatically and placed in the viewer above."}</p>
-                  </div>
-                ` : `
-                  <div class="generated-fighter-empty">
-                    <p>Press the button to roll a brand-new fighter concept with a random power like Fire, Water, Air, Earth, and more.</p>
-                  </div>
-                `}
-              </article>
-            </div>
             <div class="dashboard-grid">
               <article class="panel"><p class="eyebrow">Joined</p><h3>${formatDate(state.currentUser.joinedAt)}</h3><p>Stored locally on this machine so we can test persistence before moving to a hosted database.</p></article>
               <article class="panel"><p class="eyebrow">Current Division</p><h3>${rankInfo.displayRank}</h3><p>${rankInfo.isChampion ? `Champion score: ${rankInfo.score}` : `${rankInfo.pointsToNextTier} points to ${rankInfo.nextRankLabel}.`}</p></article>
@@ -735,24 +671,23 @@ function appTemplate() {
                   `).join("")}
                 </div>
                 <div class="fighter-stats">
-                  <span>Power ${currentFighter.power}</span>
-                  <span>${currentFighter.powerRarity}</span>
+                  <span class="rarity-chip rarity-${String(currentFighter.powerRarity || "").toLowerCase()}">${currentFighter.power}</span>
+                  <span class="rarity-chip rarity-${String(currentFighter.powerRarity || "").toLowerCase()}">${currentFighter.powerRarity}</span>
                 </div>
               </article>
-              <article class="panel">
-                <div class="panel-header"><div><p class="eyebrow">Career Notes</p><h3>Battle history matters</h3></div></div>
-                <ul class="clean-list">${(currentFighter.notes || [
-                  `${currentFighter.powerRarity || currentFighter.rarity || "Prototype"} fighter stored on this machine`,
-                  `${currentFighter.className} archetype ready for future team-building`,
-                  currentFighter.power ? `${currentFighter.power} power attunement unlocked` : "Ready for future trait unlocks"
-                ]).map((note) => `<li>${note}</li>`).join("")}</ul>
+              <article class="panel roster-model-card">
+                <div class="panel-header"><div><p class="eyebrow">Character Model</p><h3>${currentFighter.name}</h3></div></div>
+                <div class="roster-model-stage">
+                  ${randomFighterViewerMarkup(currentFighter)}
+                  <div class="podium"></div>
+                </div>
               </article>
               </div>
             ` : `
               <div class="panel roster-empty-state">
                 <p class="eyebrow">Empty Roster</p>
                 <h3>No fighters saved yet</h3>
-                <p>Generate fighters from the Profile tab and the newest three will automatically appear here.</p>
+                <p>Generate fighters from the Profile tab and the newest four will automatically appear here.</p>
               </div>
             `}
           </section>
@@ -761,19 +696,68 @@ function appTemplate() {
         ${state.activeScreen === "fighter-lab" ? `
           <section>
             <div class="section-intro"><div><p class="eyebrow">Creation Flow</p><h3>Fighter Lab</h3></div></div>
-            <div class="content-grid">
-              <article class="panel upload-zone"><div><p class="eyebrow">Step 1</p><h3>Photo Intake Placeholder</h3><p>The final app will support camera capture or upload.</p></div></article>
+            <div class="content-grid creation-tools-grid">
               <article class="panel">
-                <p class="eyebrow">Step 2</p><h3>Fighter Reveal</h3>
-                <div class="reveal-card">
-                  <div class="portrait-orb"></div>
-                  <div>
-                    <h4>Generated Fighter Card</h4>
-                    <p>Each character will roll combat stats and also unlock a random elemental power like Fire, Water, Air, or Earth.</p>
-                    <p class="reveal-meta">Power rarity will appear beside the power name: Common, Uncommon, Rare, Epic, Legendary, or Mythical.</p>
-                  </div>
+                <p class="eyebrow">Character Source Upload</p>
+                <h3>Add the 2D character art</h3>
+                <p>Upload a PNG here and the app will save it to the correct project folder for the 3D pipeline.</p>
+                <label class="upload-button" for="character-upload">Choose PNG</label>
+                <input id="character-upload" class="hidden-file-input" type="file" accept="image/png">
+                <div class="status-stack">
+                  <span class="status-chip ${state.sourceImageExists ? "is-live" : ""}">${state.sourceImageExists ? "Source image ready" : "No source image yet"}</span>
+                  <span class="status-chip ${state.hasCharacterModel ? "is-live" : ""}">${state.hasCharacterModel ? "3D model ready" : "No 3D model yet"}</span>
+                  <span class="status-chip ${state.generationInProgress ? "is-live" : ""}">${state.generationInProgress ? "Generation running" : "Generator idle"}</span>
                 </div>
-                <div class="attribute-grid">${["Attack","Defense","Agility","Vitality","Power","Rarity"].map((label) => `<span>${label}</span>`).join("")}</div>
+                ${state.appNotice ? `<p class="auth-message app-notice">${state.appNotice}</p>` : ""}
+              </article>
+              <article class="panel">
+                <p class="eyebrow">Source Preview</p>
+                <h3>Current uploaded character</h3>
+                ${state.sourceImageExists ? `
+                  <div class="source-preview-card">
+                    <img class="source-preview-image" src="${characterSourceUrl()}" alt="Uploaded character source">
+                  </div>
+                ` : `
+                  <div class="source-preview-empty">
+                    <p>Upload a PNG to preview the exact image that will be used for local 3D generation.</p>
+                  </div>
+                `}
+                <button class="primary-button" id="generate-model" type="button" ${state.sourceImageExists && !state.generationInProgress ? "" : "disabled"}>${state.generationInProgress ? "Generating..." : "Generate 3D Model"}</button>
+              </article>
+              <article class="panel">
+                <p class="eyebrow">No Photo Needed</p>
+                <h3>Generate Random Character</h3>
+                <p>Create a fully original fighter with randomized stats, class, elemental power, and rarity without starting from a real person. After the first roll, you can reroll up to ${maxRandomFighterRerolls} times.</p>
+                <button class="primary-button" id="generate-random-fighter" type="button" ${canRerollRandomFighter ? "" : "disabled"}>${hasGeneratedFighter ? `Reroll Fighter (${state.remainingRandomFighterRerolls} left)` : "Generate Random Fighter"}</button>
+                ${generatedFighter ? `
+                  <div class="generated-fighter-card">
+                    <div class="generated-fighter-header">
+                      <div>
+                        <p class="eyebrow">Latest Roll</p>
+                        <h4>${generatedFighter.name}</h4>
+                      </div>
+                      <span class="pill">${generatedFighter.className}</span>
+                    </div>
+                    ${renameFighterForm(generatedFighter, "fighter-lab-rename-fighter")}
+                    <p class="generated-fighter-copy">${generatedFighter.summary}</p>
+                    <p class="generated-fighter-copy">Rerolls remaining: ${state.remainingRandomFighterRerolls}</p>
+                    <div class="fighter-stats generated-fighter-stats">
+                      <span>Attack ${generatedFighter.stats.Attack}</span>
+                      <span>Defense ${generatedFighter.stats.Defense}</span>
+                      <span>Agility ${generatedFighter.stats.Agility}</span>
+                      <span>Vitality ${generatedFighter.stats.Vitality}</span>
+                    </div>
+                    <div class="generated-fighter-power">
+                      <span class="tag generated-power-tag">${generatedFighter.power}</span>
+                      <span class="generated-power-rarity">${generatedFighter.powerRarity}</span>
+                    </div>
+                    <p class="generated-model-note">${state.currentUser?.id ? "Saved to this local account automatically and added to your roster." : "A matching 3D model preview was generated automatically and placed in the viewer above."}</p>
+                  </div>
+                ` : `
+                  <div class="generated-fighter-empty">
+                    <p>Press the button to roll a brand-new fighter concept with a random power like Fire, Water, Air, Earth, and more.</p>
+                  </div>
+                `}
               </article>
             </div>
           </section>

@@ -681,6 +681,36 @@ button {
   color: #d62839;
 }
 
+.rarity-chip {
+  color: white;
+  font-weight: 800;
+  box-shadow: 0 10px 20px rgba(88, 118, 190, 0.12);
+}
+
+.rarity-chip.rarity-common {
+  background: #7d8597;
+}
+
+.rarity-chip.rarity-uncommon {
+  background: #2f9e44;
+}
+
+.rarity-chip.rarity-rare {
+  background: #2f6df6;
+}
+
+.rarity-chip.rarity-epic {
+  background: #7b3ff2;
+}
+
+.rarity-chip.rarity-legendary {
+  background: #c99200;
+}
+
+.rarity-chip.rarity-mythical {
+  background: #d62839;
+}
+
 .character-viewer {
   width: 100%;
   height: 390px;
@@ -765,11 +795,11 @@ button {
   margin-bottom: 18px;
 }
 
-.profile-tools-grid {
+.creation-tools-grid {
   margin-bottom: 18px;
 }
 
-.profile-tools-grid .panel {
+.creation-tools-grid .panel {
   min-height: 100%;
 }
 
@@ -778,7 +808,7 @@ button {
 }
 
 .roster-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 18px;
 }
 
@@ -791,6 +821,35 @@ button {
   display: grid;
   place-items: center;
   text-align: center;
+}
+
+.roster-model-card {
+  overflow: hidden;
+}
+
+.roster-model-stage {
+  position: relative;
+  min-height: 360px;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.95), rgba(232, 241, 255, 0.88)),
+    linear-gradient(180deg, rgba(248, 251, 255, 0.8), rgba(223, 234, 255, 0.8));
+  border: 1px solid rgba(125, 152, 226, 0.18);
+  overflow: hidden;
+}
+
+.roster-model-stage .procedural-model-shell {
+  padding-bottom: 48px;
+}
+
+.roster-model-stage .procedural-model-turntable {
+  transform: scale(0.9);
+  animation: model-spin 12s linear infinite;
+}
+
+.roster-model-stage .procedural-model-caption {
+  width: min(240px, calc(100% - 44px));
+  bottom: 44px;
 }
 
 .rename-fighter-form {
