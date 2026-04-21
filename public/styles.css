@@ -816,6 +816,21 @@ button {
   outline: 2px solid rgba(138, 91, 255, 0.32);
 }
 
+.fighter-card[draggable="true"] {
+  cursor: grab;
+}
+
+.fighter-card.dragging {
+  cursor: grabbing;
+  opacity: 0.55;
+  transform: scale(0.98);
+}
+
+.fighter-card.drag-over {
+  outline: 2px dashed rgba(47, 165, 255, 0.7);
+  box-shadow: 0 24px 70px rgba(47, 165, 255, 0.18);
+}
+
 .roster-empty-state {
   min-height: 260px;
   display: grid;
@@ -897,6 +912,52 @@ button {
   background: rgba(91, 203, 255, 0.1);
 }
 
+.stat-chip,
+.power-chip,
+.rarity-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.fighter-stats .stat-chip,
+.generated-fighter-power .power-chip,
+.fighter-stats .power-chip,
+.generated-fighter-power .rarity-chip,
+.fighter-stats .rarity-chip {
+  color: white;
+  font-weight: 800;
+  box-shadow: 0 10px 20px rgba(88, 118, 190, 0.12);
+}
+
+.fighter-stats .stat-attack {
+  background: #f43f5e;
+}
+
+.fighter-stats .stat-defense {
+  background: #64748b;
+}
+
+.fighter-stats .stat-agility {
+  background: #facc15;
+}
+
+.fighter-stats .stat-vitality {
+  background: #22c55e;
+}
+
+.power-chip {
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
+}
+
+.fighter-stats .power-chip,
+.generated-fighter-power .power-chip {
+  background: var(--chip-bg);
+  border-color: var(--chip-border);
+}
+
 .bars {
   display: grid;
   gap: 12px;
@@ -907,6 +968,26 @@ button {
   display: grid;
   grid-template-columns: 90px 1fr;
   gap: 12px;
+}
+
+.bar-label {
+  font-weight: 800;
+}
+
+.stat-text-attack {
+  color: #f43f5e;
+}
+
+.stat-text-defense {
+  color: #64748b;
+}
+
+.stat-text-agility {
+  color: #d97706;
+}
+
+.stat-text-vitality {
+  color: #22c55e;
 }
 
 .bar-track {
@@ -1115,7 +1196,7 @@ button {
 }
 
 .generated-power-tag {
-  background: linear-gradient(135deg, var(--blue-strong), var(--purple));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--chip-bg, var(--blue-strong)) 86%, white 14%), var(--chip-border, var(--purple)));
 }
 
 .generated-power-rarity {

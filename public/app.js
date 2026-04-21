@@ -89,6 +89,7 @@ const state = {
   remainingRandomFighterRerolls: maxRandomFighterRerolls,
   rosterFighters: [],
   selectedRosterFighterId: null,
+  draggedRosterFighterId: null,
   authDraft: {
     username: "",
     email: "",
@@ -306,6 +307,26 @@ function addFighterToRoster(fighter) {
   state.selectedRosterFighterId = fighter.id;
 }
 
+function moveRosterFighter(draggedId, targetId) {
+  if (!draggedId || !targetId || draggedId === targetId) {
+    return;
+  }
+
+  const nextFighters = [...state.savedFighters];
+  const draggedIndex = nextFighters.findIndex((fighter) => fighter.id === draggedId);
+  const targetIndex = nextFighters.findIndex((fighter) => fighter.id === targetId);
+
+  if (draggedIndex < 0 || targetIndex < 0) {
+    return;
+  }
+
+  const [draggedFighter] = nextFighters.splice(draggedIndex, 1);
+  const adjustedTargetIndex = nextFighters.findIndex((fighter) => fighter.id === targetId);
+  nextFighters.splice(adjustedTargetIndex, 0, draggedFighter);
+  state.savedFighters = nextFighters;
+  state.selectedRosterFighterId = draggedId;
+}
+
 function summaryForFighter(fighter, name = fighter.name) {
   return `${name} is a ${fighter.className.toLowerCase()} built around ${fighter.power.toLowerCase()} control and aggressive arena pressure.`;
 }
@@ -361,6 +382,27 @@ function themeForPower(power) {
   return powerThemes[power] || { primary: "#8a5bff", secondary: "#5bcbff", accent: "#6b3df2" };
 }
 
+function styleForPowerChip(power) {
+  const theme = themeForPower(power);
+  return `--chip-bg:${theme.primary};--chip-border:${theme.accent};`;
+}
+
+function rarityClassFor(rarity) {
+  return `rarity-${String(rarity || "").toLowerCase()}`;
+}
+
+function statChip(label, value) {
+  return `<span class="stat-chip stat-${String(label).toLowerCase()}">${label} ${value}</span>`;
+}
+
+function powerChip(power) {
+  return `<span class="power-chip" style="${styleForPowerChip(power)}">${power}</span>`;
+}
+
+function rarityChip(rarity) {
+  return `<span class="rarity-chip ${rarityClassFor(rarity)}">${rarity}</span>`;
+}
+
 function randomFighterViewerMarkup(fighter) {
   if (!fighter) {
     return "";
@@ -368,7 +410,7 @@ function randomFighterViewerMarkup(fighter) {
 
   const theme = themeForPower(fighter.power);
   const style = `--fighter-primary:${theme.primary};--fighter-secondary:${theme.secondary};--fighter-accent:${theme.accent};`;
-  const rarityClass = `rarity-${String(fighter.powerRarity || "").toLowerCase()}`;
+  const rarityClass = rarityClassFor(fighter.powerRarity);
 
   return `
     <div class="procedural-model-shell" style="${style}">
@@ -394,7 +436,7 @@ function randomFighterViewerMarkup(fighter) {
         </div>
       </div>
       <div class="procedural-model-caption">
-        <span class="tag generated-power-tag">${escapeHtml(fighter.power)}</span>
+        <span class="tag generated-power-tag" style="${styleForPowerChip(fighter.power)}">${escapeHtml(fighter.power)}</span>
         <strong class="procedural-model-name">${escapeHtml(fighter.name)}</strong>
         <span class="procedural-model-rarity ${rarityClass}">${escapeHtml(fighter.powerRarity)} Power</span>
       </div>
@@ -643,19 +685,19 @@ function appTemplate() {
             ${rosterFighters.length ? `
               <div class="roster-grid">
               ${rosterFighters.map((fighter) => `
-                <article class="fighter-card ${currentFighter?.id === fighter.id ? "selected" : ""}" data-roster-fighter-id="${fighter.id}">
-                  <span class="tag">${fighter.powerRarity}</span>
+                <article class="fighter-card ${currentFighter?.id === fighter.id ? "selected" : ""} ${state.draggedRosterFighterId === fighter.id ? "dragging" : ""}" data-roster-fighter-id="${fighter.id}" draggable="true">
+                  ${rarityChip(fighter.powerRarity)}
                   <h4>${fighter.name}</h4>
                   <p>${fighter.className}</p>
                   <div class="fighter-stats">
-                    <span>Attack ${fighter.stats.Attack}</span>
-                    <span>Defense ${fighter.stats.Defense}</span>
-                    <span>Agility ${fighter.stats.Agility}</span>
-                    <span>Vitality ${fighter.stats.Vitality}</span>
+                    ${statChip("Attack", fighter.stats.Attack)}
+                    ${statChip("Defense", fighter.stats.Defense)}
+                    ${statChip("Agility", fighter.stats.Agility)}
+                    ${statChip("Vitality", fighter.stats.Vitality)}
                   </div>
                   <div class="fighter-stats">
-                    <span>${fighter.power}</span>
-                    <span>${fighter.powerRarity}</span>
+                    ${powerChip(fighter.power)}
+                    ${rarityChip(fighter.powerRarity)}
                   </div>
                 </article>
               `).join("")}
@@ -667,12 +709,12 @@ function appTemplate() {
                 <p>${currentFighter.summary}</p>
                 <div class="bars">
                   ${Object.entries(currentFighter.stats).map(([label, value]) => `
-                    <div class="bar"><span>${label}</span><div class="bar-track"><i class="bar-fill" style="width:${value}%"></i></div></div>
+                    <div class="bar"><span class="bar-label stat-text-${String(label).toLowerCase()}">${label}</span><div class="bar-track"><i class="bar-fill" style="width:${value}%"></i></div></div>
                   `).join("")}
                 </div>
                 <div class="fighter-stats">
-                  <span class="rarity-chip rarity-${String(currentFighter.powerRarity || "").toLowerCase()}">${currentFighter.power}</span>
-                  <span class="rarity-chip rarity-${String(currentFighter.powerRarity || "").toLowerCase()}">${currentFighter.powerRarity}</span>
+                  ${powerChip(currentFighter.power)}
+                  ${rarityChip(currentFighter.powerRarity)}
                 </div>
               </article>
               <article class="panel roster-model-card">
@@ -742,14 +784,14 @@ function appTemplate() {
                     <p class="generated-fighter-copy">${generatedFighter.summary}</p>
                     <p class="generated-fighter-copy">Rerolls remaining: ${state.remainingRandomFighterRerolls}</p>
                     <div class="fighter-stats generated-fighter-stats">
-                      <span>Attack ${generatedFighter.stats.Attack}</span>
-                      <span>Defense ${generatedFighter.stats.Defense}</span>
-                      <span>Agility ${generatedFighter.stats.Agility}</span>
-                      <span>Vitality ${generatedFighter.stats.Vitality}</span>
+                      ${statChip("Attack", generatedFighter.stats.Attack)}
+                      ${statChip("Defense", generatedFighter.stats.Defense)}
+                      ${statChip("Agility", generatedFighter.stats.Agility)}
+                      ${statChip("Vitality", generatedFighter.stats.Vitality)}
                     </div>
                     <div class="generated-fighter-power">
-                      <span class="tag generated-power-tag">${generatedFighter.power}</span>
-                      <span class="generated-power-rarity">${generatedFighter.powerRarity}</span>
+                      ${powerChip(generatedFighter.power)}
+                      ${rarityChip(generatedFighter.powerRarity)}
                     </div>
                     <p class="generated-model-note">${state.currentUser?.id ? "Saved to this local account automatically and added to your roster." : "A matching 3D model preview was generated automatically and placed in the viewer above."}</p>
                   </div>
@@ -848,6 +890,36 @@ function bindEvents() {
   document.querySelectorAll("[data-roster-fighter-id]").forEach((card) => {
     card.addEventListener("click", () => {
       state.selectedRosterFighterId = card.dataset.rosterFighterId;
+      render();
+    });
+
+    card.addEventListener("dragstart", (event) => {
+      state.draggedRosterFighterId = card.dataset.rosterFighterId;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", card.dataset.rosterFighterId);
+      card.classList.add("dragging");
+    });
+
+    card.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      card.classList.add("drag-over");
+    });
+
+    card.addEventListener("dragleave", () => {
+      card.classList.remove("drag-over");
+    });
+
+    card.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const draggedId = event.dataTransfer.getData("text/plain") || state.draggedRosterFighterId;
+      moveRosterFighter(draggedId, card.dataset.rosterFighterId);
+      state.draggedRosterFighterId = null;
+      render();
+    });
+
+    card.addEventListener("dragend", () => {
+      state.draggedRosterFighterId = null;
       render();
     });
   });
