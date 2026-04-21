@@ -29,6 +29,8 @@ const powerThemes = {
   Metal: { primary: "#adb6c8", secondary: "#e1e7f0", accent: "#707b92" },
   Nature: { primary: "#59ca78", secondary: "#96ef9f", accent: "#2c8e4d" }
 };
+const maxRandomFighterRerolls = 3;
+const maxRosterSize = 3;
 
 const fighters = [
   {
@@ -84,6 +86,9 @@ const state = {
   appNotice: "",
   characterImageVersion: Date.now(),
   generatedFighter: null,
+  remainingRandomFighterRerolls: maxRandomFighterRerolls,
+  rosterFighters: [],
+  selectedRosterFighterId: null,
   authDraft: {
     username: "",
     email: "",
@@ -205,18 +210,70 @@ function generateRandomFighter() {
   const name = `${randomFrom(fighterNamePrefixes)} ${randomFrom(fighterNameSuffixes)}`;
 
   return {
+    id: `fighter-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
     className,
     power,
     powerRarity,
+    rarity: powerRarity,
+    level: randomStat(1, 10),
     summary: `${name} is a ${className.toLowerCase()} built around ${power.toLowerCase()} control and aggressive arena pressure.`,
     stats: {
       Attack: randomStat(45, 96),
       Defense: randomStat(40, 94),
       Agility: randomStat(42, 97),
       Vitality: randomStat(44, 95)
-    }
+    },
+    notes: [
+      `${power} affinity`,
+      `${powerRarity} rarity power`,
+      `${className} class frame`,
+      `Generated for the player roster`
+    ]
   };
+}
+
+function addFighterToRoster(fighter) {
+  const nextRoster = [fighter, ...state.rosterFighters].slice(0, maxRosterSize);
+  state.rosterFighters = nextRoster;
+  state.selectedRosterFighterId = fighter.id;
+}
+
+function summaryForFighter(fighter, name = fighter.name) {
+  return `${name} is a ${fighter.className.toLowerCase()} built around ${fighter.power.toLowerCase()} control and aggressive arena pressure.`;
+}
+
+function renameFighter(fighterId, nextName) {
+  const name = nextName.trim();
+  if (!name) {
+    state.appNotice = "Choose a fighter name before saving.";
+    return;
+  }
+
+  const rosterFighter = state.rosterFighters.find((fighter) => fighter.id === fighterId);
+  if (rosterFighter) {
+    rosterFighter.name = name;
+    rosterFighter.summary = summaryForFighter(rosterFighter, name);
+  }
+
+  if (state.generatedFighter?.id === fighterId) {
+    state.generatedFighter.name = name;
+    state.generatedFighter.summary = summaryForFighter(state.generatedFighter, name);
+  }
+
+  state.appNotice = `Renamed fighter to ${name}.`;
+}
+
+function renameFighterForm(fighter, formId) {
+  return `
+    <form class="rename-fighter-form" data-rename-fighter-id="${fighter.id}" id="${formId}">
+      <label class="rename-fighter-field">
+        <span>Character Name</span>
+        <input type="text" value="${escapeHtml(fighter.name)}" maxlength="32" aria-label="Character name">
+      </label>
+      <button class="ghost-button" type="submit">Save Name</button>
+    </form>
+  `;
 }
 
 function themeForPower(power) {
@@ -369,10 +426,12 @@ function authTemplate() {
 }
 
 function appTemplate() {
-  const currentFighter = fighters[0];
+  const currentFighter = state.rosterFighters.find((fighter) => fighter.id === state.selectedRosterFighterId) || state.rosterFighters[0] || null;
   const rankInfo = currentRankInfo();
   const leaderboardRows = leaderboardRowsForUser(state.currentUser);
   const generatedFighter = state.generatedFighter;
+  const hasGeneratedFighter = Boolean(generatedFighter);
+  const canRerollRandomFighter = !hasGeneratedFighter || state.remainingRandomFighterRerolls > 0;
   return `
     <div class="app-shell">
       <aside class="sidebar">
@@ -424,7 +483,7 @@ function appTemplate() {
                     <div class="fighter-stats">
                       <span>Season Zero</span>
                       <span>${rankInfo.displayRank}</span>
-                      <span>Roster 8/20</span>
+                      <span>Roster ${state.rosterFighters.length}/${maxRosterSize}</span>
                     </div>
                   </div>
                 </div>
@@ -490,8 +549,8 @@ function appTemplate() {
               <article class="panel">
                 <p class="eyebrow">No Photo Needed</p>
                 <h3>Generate Random Character</h3>
-                <p>Create a fully original fighter with randomized stats, class, elemental power, and rarity without starting from a real person.</p>
-                <button class="primary-button" id="generate-random-fighter" type="button">Generate Random Fighter</button>
+                <p>Create a fully original fighter with randomized stats, class, elemental power, and rarity without starting from a real person. After the first roll, you can reroll up to ${maxRandomFighterRerolls} times.</p>
+                <button class="primary-button" id="generate-random-fighter" type="button" ${canRerollRandomFighter ? "" : "disabled"}>${hasGeneratedFighter ? `Reroll Fighter (${state.remainingRandomFighterRerolls} left)` : "Generate Random Fighter"}</button>
                 ${generatedFighter ? `
                   <div class="generated-fighter-card">
                     <div class="generated-fighter-header">
@@ -501,7 +560,9 @@ function appTemplate() {
                       </div>
                       <span class="pill">${generatedFighter.className}</span>
                     </div>
+                    ${renameFighterForm(generatedFighter, "profile-rename-fighter")}
                     <p class="generated-fighter-copy">${generatedFighter.summary}</p>
+                    <p class="generated-fighter-copy">Rerolls remaining: ${state.remainingRandomFighterRerolls}</p>
                     <div class="fighter-stats generated-fighter-stats">
                       <span>Attack ${generatedFighter.stats.Attack}</span>
                       <span>Defense ${generatedFighter.stats.Defense}</span>
@@ -525,7 +586,7 @@ function appTemplate() {
               <article class="panel"><p class="eyebrow">Joined</p><h3>${formatDate(state.currentUser.joinedAt)}</h3><p>Stored locally in browser storage for now.</p></article>
               <article class="panel"><p class="eyebrow">Current Division</p><h3>${rankInfo.displayRank}</h3><p>${rankInfo.isChampion ? `Champion score: ${rankInfo.score}` : `${rankInfo.pointsToNextTier} points to ${rankInfo.nextRankLabel}.`}</p></article>
               <article class="panel"><p class="eyebrow">Ranked Score</p><h3>${rankInfo.score}</h3><p>${rankInfo.isChampion ? "Champion players keep climbing with raw score only." : `Tier progress: ${rankInfo.tierProgress}`}</p></article>
-              <article class="panel"><p class="eyebrow">Favorite Fighter</p><h3>Nova Rush</h3><p>Fast duelist, high-agility closer, and current headliner for your roster.</p></article>
+              <article class="panel"><p class="eyebrow">Favorite Fighter</p><h3>${currentFighter ? currentFighter.name : "No fighters yet"}</h3><p>${currentFighter ? `${currentFighter.className} with ${currentFighter.power} power leads your active roster.` : "Generate a fighter in Profile and it will appear here and in your roster."}</p></article>
             </div>
           </section>
         ` : ""}
@@ -559,38 +620,55 @@ function appTemplate() {
           <section>
             <div class="section-intro">
               <div><p class="eyebrow">Collection</p><h3>Roster Builder</h3></div>
+              <span class="pill">Roster ${state.rosterFighters.length}/${maxRosterSize}</span>
             </div>
-            <div class="roster-grid">
-              ${fighters.map((fighter, index) => `
-                <article class="fighter-card ${index === 0 ? "selected" : ""}">
-                  <span class="tag">${fighter.rarity}</span>
+            ${state.rosterFighters.length ? `
+              <div class="roster-grid">
+              ${state.rosterFighters.map((fighter) => `
+                <article class="fighter-card ${currentFighter?.id === fighter.id ? "selected" : ""}" data-roster-fighter-id="${fighter.id}">
+                  <span class="tag">${fighter.powerRarity}</span>
                   <h4>${fighter.name}</h4>
                   <p>${fighter.className}</p>
                   <div class="fighter-stats">
                     <span>Attack ${fighter.stats.Attack}</span>
                     <span>Defense ${fighter.stats.Defense}</span>
                     <span>Agility ${fighter.stats.Agility}</span>
-                    <span>Power ${fighter.stats.Power}</span>
                     <span>Vitality ${fighter.stats.Vitality}</span>
+                  </div>
+                  <div class="fighter-stats">
+                    <span>${fighter.power}</span>
+                    <span>${fighter.powerRarity}</span>
                   </div>
                 </article>
               `).join("")}
-            </div>
-            <div class="content-grid">
+              </div>
+              <div class="content-grid">
               <article class="panel">
                 <div class="panel-header"><div><p class="eyebrow">Selected Fighter</p><h3>${currentFighter.name}</h3></div><span class="pill">Level ${currentFighter.level}</span></div>
+                ${renameFighterForm(currentFighter, "roster-rename-fighter")}
                 <p>${currentFighter.summary}</p>
                 <div class="bars">
                   ${Object.entries(currentFighter.stats).map(([label, value]) => `
                     <div class="bar"><span>${label}</span><div class="bar-track"><i class="bar-fill" style="width:${value}%"></i></div></div>
                   `).join("")}
                 </div>
+                <div class="fighter-stats">
+                  <span>Power ${currentFighter.power}</span>
+                  <span>${currentFighter.powerRarity}</span>
+                </div>
               </article>
               <article class="panel">
                 <div class="panel-header"><div><p class="eyebrow">Career Notes</p><h3>Battle history matters</h3></div></div>
                 <ul class="clean-list">${currentFighter.notes.map((note) => `<li>${note}</li>`).join("")}</ul>
               </article>
-            </div>
+              </div>
+            ` : `
+              <div class="panel roster-empty-state">
+                <p class="eyebrow">Empty Roster</p>
+                <h3>No fighters saved yet</h3>
+                <p>Generate fighters from the Profile tab and the newest three will automatically appear here.</p>
+              </div>
+            `}
           </section>
         ` : ""}
 
@@ -697,6 +775,22 @@ function bindEvents() {
     });
   });
 
+  document.querySelectorAll("[data-roster-fighter-id]").forEach((card) => {
+    card.addEventListener("click", () => {
+      state.selectedRosterFighterId = card.dataset.rosterFighterId;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-rename-fighter-id]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const input = form.querySelector("input");
+      renameFighter(form.dataset.renameFighterId, input?.value || "");
+      render();
+    });
+  });
+
   const logout = document.getElementById("logout");
   if (logout) {
     logout.addEventListener("click", () => {
@@ -738,8 +832,21 @@ function bindEvents() {
   const generateRandomFighterButton = document.getElementById("generate-random-fighter");
   if (generateRandomFighterButton) {
     generateRandomFighterButton.addEventListener("click", () => {
+      if (state.generatedFighter && state.remainingRandomFighterRerolls <= 0) {
+        state.appNotice = "You have used all 3 rerolls for this random fighter.";
+        render();
+        return;
+      }
+
+      if (state.generatedFighter) {
+        state.remainingRandomFighterRerolls -= 1;
+      }
+
       state.generatedFighter = generateRandomFighter();
-      state.appNotice = `Random fighter generated: ${state.generatedFighter.name} with ${state.generatedFighter.power} power (${state.generatedFighter.powerRarity}).`;
+      addFighterToRoster(state.generatedFighter);
+      state.appNotice = state.remainingRandomFighterRerolls > 0 || !state.generatedFighter
+        ? `Random fighter generated: ${state.generatedFighter.name} with ${state.generatedFighter.power} power (${state.generatedFighter.powerRarity}). Added to roster. ${state.remainingRandomFighterRerolls} rerolls remaining.`
+        : `Random fighter generated: ${state.generatedFighter.name} with ${state.generatedFighter.power} power (${state.generatedFighter.powerRarity}). Added to roster. No rerolls remaining.`;
       render();
     });
   }

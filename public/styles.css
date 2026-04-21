@@ -778,12 +778,50 @@ button {
 }
 
 .roster-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 18px;
 }
 
 .fighter-card.selected {
   outline: 2px solid rgba(138, 91, 255, 0.32);
+}
+
+.roster-empty-state {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.rename-fighter-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 14px;
+}
+
+.rename-fighter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.rename-fighter-field span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.rename-fighter-field input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(125, 152, 226, 0.2);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--text);
+  outline: none;
 }
 
 .fighter-stats,
