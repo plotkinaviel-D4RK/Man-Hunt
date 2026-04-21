@@ -5,7 +5,6 @@ const demoAccount = {
   rankedScore: 711
 };
 
-const storageKey = "man-hunt.accounts";
 const characterModelPath = "/assets/characters/models/profile-character.glb";
 const characterSourcePath = "/assets/characters/source/profile-character.png";
 const tierSize = 100;
@@ -76,6 +75,7 @@ const state = {
   mode: "login",
   authenticated: false,
   currentUser: null,
+  savedFighters: [],
   activeScreen: "profile",
   message: "",
   hasCharacterModel: false,
@@ -92,18 +92,6 @@ const state = {
   }
 };
 
-function getAccounts() {
-  try {
-    return JSON.parse(window.localStorage.getItem(storageKey) || "[]").map(normalizeAccount);
-  } catch {
-    return [];
-  }
-}
-
-function saveAccounts(accounts) {
-  window.localStorage.setItem(storageKey, JSON.stringify(accounts.map(normalizeAccount)));
-}
-
 function normalizeRankedScore(value) {
   const score = Number(value);
   if (!Number.isFinite(score)) {
@@ -118,6 +106,61 @@ function normalizeAccount(account) {
     ...account,
     rankedScore: normalizeRankedScore(account?.rankedScore)
   };
+}
+
+function normalizeFighter(fighter) {
+  return {
+    ...fighter,
+    stats: {
+      Attack: normalizeRankedScore(fighter?.stats?.Attack),
+      Defense: normalizeRankedScore(fighter?.stats?.Defense),
+      Agility: normalizeRankedScore(fighter?.stats?.Agility),
+      Vitality: normalizeRankedScore(fighter?.stats?.Vitality),
+      Power: normalizeRankedScore(fighter?.stats?.Power)
+    }
+  };
+}
+
+async function apiRequest(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.message || "Request failed.");
+  }
+
+  return payload;
+}
+
+async function loadSavedFighters() {
+  if (!state.currentUser?.id) {
+    state.savedFighters = [];
+    return;
+  }
+
+  const payload = await apiRequest(`/api/characters?userId=${encodeURIComponent(state.currentUser.id)}`);
+  state.savedFighters = (payload.characters || []).map(normalizeFighter);
+}
+
+async function saveFighterToAccount(fighter) {
+  if (!state.currentUser?.id) {
+    return fighter;
+  }
+
+  const payload = await apiRequest("/api/characters", {
+    method: "POST",
+    body: JSON.stringify({
+      userId: state.currentUser.id,
+      character: fighter
+    })
+  });
+
+  return normalizeFighter(payload.character);
 }
 
 function rankInfoForScore(scoreValue) {
@@ -369,7 +412,8 @@ function authTemplate() {
 }
 
 function appTemplate() {
-  const currentFighter = fighters[0];
+  const rosterFighters = state.savedFighters.length ? state.savedFighters : fighters;
+  const currentFighter = rosterFighters[0];
   const rankInfo = currentRankInfo();
   const leaderboardRows = leaderboardRowsForUser(state.currentUser);
   const generatedFighter = state.generatedFighter;
@@ -424,7 +468,7 @@ function appTemplate() {
                     <div class="fighter-stats">
                       <span>Season Zero</span>
                       <span>${rankInfo.displayRank}</span>
-                      <span>Roster 8/20</span>
+                      <span>Roster ${rosterFighters.length}/20</span>
                     </div>
                   </div>
                 </div>
@@ -512,7 +556,7 @@ function appTemplate() {
                       <span class="tag generated-power-tag">${generatedFighter.power}</span>
                       <span class="generated-power-rarity">${generatedFighter.powerRarity}</span>
                     </div>
-                    <p class="generated-model-note">A matching 3D model preview was generated automatically and placed in the viewer above.</p>
+                    <p class="generated-model-note">${state.currentUser?.id ? "Saved to this local account automatically and added to your roster." : "A matching 3D model preview was generated automatically and placed in the viewer above."}</p>
                   </div>
                 ` : `
                   <div class="generated-fighter-empty">
@@ -522,10 +566,10 @@ function appTemplate() {
               </article>
             </div>
             <div class="dashboard-grid">
-              <article class="panel"><p class="eyebrow">Joined</p><h3>${formatDate(state.currentUser.joinedAt)}</h3><p>Stored locally in browser storage for now.</p></article>
+              <article class="panel"><p class="eyebrow">Joined</p><h3>${formatDate(state.currentUser.joinedAt)}</h3><p>Stored locally on this machine so we can test persistence before moving to a hosted database.</p></article>
               <article class="panel"><p class="eyebrow">Current Division</p><h3>${rankInfo.displayRank}</h3><p>${rankInfo.isChampion ? `Champion score: ${rankInfo.score}` : `${rankInfo.pointsToNextTier} points to ${rankInfo.nextRankLabel}.`}</p></article>
               <article class="panel"><p class="eyebrow">Ranked Score</p><h3>${rankInfo.score}</h3><p>${rankInfo.isChampion ? "Champion players keep climbing with raw score only." : `Tier progress: ${rankInfo.tierProgress}`}</p></article>
-              <article class="panel"><p class="eyebrow">Favorite Fighter</p><h3>Nova Rush</h3><p>Fast duelist, high-agility closer, and current headliner for your roster.</p></article>
+              <article class="panel"><p class="eyebrow">Saved Fighters</p><h3>${state.savedFighters.length}</h3><p>${state.currentUser?.id ? "Every random fighter you roll is saved into your local account." : "Demo mode still works without local account storage."}</p></article>
             </div>
           </section>
         ` : ""}
@@ -561,9 +605,9 @@ function appTemplate() {
               <div><p class="eyebrow">Collection</p><h3>Roster Builder</h3></div>
             </div>
             <div class="roster-grid">
-              ${fighters.map((fighter, index) => `
+              ${rosterFighters.map((fighter, index) => `
                 <article class="fighter-card ${index === 0 ? "selected" : ""}">
-                  <span class="tag">${fighter.rarity}</span>
+                  <span class="tag">${fighter.powerRarity || fighter.rarity || "Saved"}</span>
                   <h4>${fighter.name}</h4>
                   <p>${fighter.className}</p>
                   <div class="fighter-stats">
@@ -578,7 +622,7 @@ function appTemplate() {
             </div>
             <div class="content-grid">
               <article class="panel">
-                <div class="panel-header"><div><p class="eyebrow">Selected Fighter</p><h3>${currentFighter.name}</h3></div><span class="pill">Level ${currentFighter.level}</span></div>
+                <div class="panel-header"><div><p class="eyebrow">Selected Fighter</p><h3>${currentFighter.name}</h3></div><span class="pill">${currentFighter.level ? `Level ${currentFighter.level}` : currentFighter.powerRarity || currentFighter.rarity || "Saved Fighter"}</span></div>
                 <p>${currentFighter.summary}</p>
                 <div class="bars">
                   ${Object.entries(currentFighter.stats).map(([label, value]) => `
@@ -588,7 +632,11 @@ function appTemplate() {
               </article>
               <article class="panel">
                 <div class="panel-header"><div><p class="eyebrow">Career Notes</p><h3>Battle history matters</h3></div></div>
-                <ul class="clean-list">${currentFighter.notes.map((note) => `<li>${note}</li>`).join("")}</ul>
+                <ul class="clean-list">${(currentFighter.notes || [
+                  `${currentFighter.powerRarity || currentFighter.rarity || "Prototype"} fighter stored on this machine`,
+                  `${currentFighter.className} archetype ready for future team-building`,
+                  currentFighter.power ? `${currentFighter.power} power attunement unlocked` : "Ready for future trait unlocks"
+                ]).map((note) => `<li>${note}</li>`).join("")}</ul>
               </article>
             </div>
           </section>
@@ -666,18 +714,18 @@ function bindEvents() {
 
   const authForm = document.getElementById("auth-form");
   if (authForm) {
-    authForm.addEventListener("submit", (event) => {
+    authForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       syncAuthDraftFromInputs();
-      handleAuthSubmit();
+      await handleAuthSubmit();
     });
   }
 
   const authSubmitButton = document.getElementById("auth-submit-button");
   if (authSubmitButton) {
-    authSubmitButton.addEventListener("click", () => {
+    authSubmitButton.addEventListener("click", async () => {
       syncAuthDraftFromInputs();
-      handleAuthSubmit();
+      await handleAuthSubmit();
     });
   }
 
@@ -702,6 +750,8 @@ function bindEvents() {
     logout.addEventListener("click", () => {
       state.authenticated = false;
       state.currentUser = null;
+      state.savedFighters = [];
+      state.generatedFighter = null;
       state.mode = "login";
       state.message = "";
       render();
@@ -737,9 +787,25 @@ function bindEvents() {
 
   const generateRandomFighterButton = document.getElementById("generate-random-fighter");
   if (generateRandomFighterButton) {
-    generateRandomFighterButton.addEventListener("click", () => {
-      state.generatedFighter = generateRandomFighter();
-      state.appNotice = `Random fighter generated: ${state.generatedFighter.name} with ${state.generatedFighter.power} power (${state.generatedFighter.powerRarity}).`;
+    generateRandomFighterButton.addEventListener("click", async () => {
+      const rolledFighter = normalizeFighter(generateRandomFighter());
+      state.generatedFighter = rolledFighter;
+      state.appNotice = `Random fighter generated: ${rolledFighter.name} with ${rolledFighter.power} power (${rolledFighter.powerRarity}).`;
+      render();
+
+      if (!state.currentUser?.id) {
+        return;
+      }
+
+      try {
+        const savedFighter = await saveFighterToAccount(rolledFighter);
+        state.generatedFighter = savedFighter;
+        state.savedFighters = [savedFighter, ...state.savedFighters];
+        state.appNotice = `${savedFighter.name} was saved to ${state.currentUser.username}'s local roster.`;
+      } catch (error) {
+        state.appNotice = error.message || "The fighter rolled, but saving it failed.";
+      }
+
       render();
     });
   }
@@ -790,6 +856,7 @@ function readFileAsDataUrl(file) {
 
 async function uploadCharacterSource(dataUrl) {
   state.appNotice = "Uploading character source...";
+  state.generatedFighter = null;
   render();
 
   try {
@@ -815,6 +882,7 @@ async function uploadCharacterSource(dataUrl) {
 
 async function generateProfileModel() {
   state.generationInProgress = true;
+  state.generatedFighter = null;
   state.appNotice = "Generating the 3D model locally. This can take a while on the first run.";
   render();
 
@@ -837,8 +905,7 @@ async function generateProfileModel() {
   render();
 }
 
-function handleAuthSubmit() {
-  const accounts = getAccounts();
+async function handleAuthSubmit() {
   const email = state.authDraft.email.trim().toLowerCase();
   const password = state.authDraft.password;
 
@@ -849,20 +916,28 @@ function handleAuthSubmit() {
       return;
     }
 
-    const matched = accounts.find((account) => account.email === email && account.password === password);
-    if (!matched) {
+    try {
+      const payload = await apiRequest("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+
+      state.authenticated = true;
+      state.currentUser = normalizeAccount(payload.user);
+      state.savedFighters = (payload.characters || []).map(normalizeFighter);
+      state.activeScreen = "profile";
+      state.message = "";
+      state.appNotice = state.savedFighters.length
+        ? `${state.savedFighters.length} saved fighters loaded from this machine.`
+        : "Your local account loaded. Generate a fighter to start building your roster.";
+      resetAuthDraft();
+      render();
+      return;
+    } catch (error) {
       state.message = "No matching account found yet. Use the demo account or create a local profile.";
       render();
       return;
     }
-
-    state.authenticated = true;
-    state.currentUser = matched;
-    state.activeScreen = "profile";
-    state.message = "";
-    resetAuthDraft();
-    render();
-    return;
   }
 
   const username = state.authDraft.username.trim();
@@ -880,29 +955,30 @@ function handleAuthSubmit() {
     return;
   }
 
-  if (email === demoAccount.email.toLowerCase() || accounts.some((account) => account.email === email)) {
-    state.message = "That email is already in use in this local prototype.";
+  if (email === demoAccount.email.toLowerCase()) {
+    state.message = "That email is already reserved for the demo account.";
     render();
     return;
   }
 
-  const account = {
-    username,
-    email,
-    password,
-    joinedAt: new Date().toISOString(),
-    rankedScore: 0
-  };
+  try {
+    const payload = await apiRequest("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ username, email, password })
+    });
 
-  accounts.push(account);
-  saveAccounts(accounts);
-
-  state.authenticated = true;
-  state.currentUser = account;
-  state.activeScreen = "profile";
-  state.message = "";
-  resetAuthDraft();
-  render();
+    state.authenticated = true;
+    state.currentUser = normalizeAccount(payload.user);
+    state.savedFighters = [];
+    state.activeScreen = "profile";
+    state.message = "";
+    state.appNotice = "Local account created. Any fighters you generate now will be saved on this machine.";
+    resetAuthDraft();
+    render();
+  } catch (error) {
+    state.message = error.message || "Account creation failed.";
+    render();
+  }
 }
 
 function loginAsDemo() {
@@ -913,6 +989,9 @@ function loginAsDemo() {
     joinedAt: "2026-04-19T12:00:00.000Z",
     rankedScore: demoAccount.rankedScore
   });
+  state.savedFighters = [];
+  state.generatedFighter = null;
+  state.appNotice = "Demo mode is active. Create a local account when you want fighter storage on this machine.";
   state.activeScreen = "profile";
   state.message = "";
   resetAuthDraft();
